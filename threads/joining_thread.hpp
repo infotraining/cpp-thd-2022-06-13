@@ -1,6 +1,8 @@
 #ifndef JOINING_THREAD_HPP
 #define JOINING_THREAD_HPP
 
+#include <thread>
+
 namespace ext
 {
     template <typename T1, typename T2>
