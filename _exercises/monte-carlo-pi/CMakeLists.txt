@@ -3,6 +3,7 @@ string(REPLACE " " "_" ProjectId ${PROJECT_NAME_STR})
 
 cmake_minimum_required(VERSION 3.15)
 project(${PROJECT_NAME_STR})
+set(CMAKE_BUILD_TYPE "Release") 
 
 #----------------------------------------
 # set compiler
