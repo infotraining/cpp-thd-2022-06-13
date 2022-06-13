@@ -5,8 +5,10 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <stop_token>
+#include "joining_thread.hpp"
 
-using namespace std::literals; // dzięki temu nie będziemy wiedzieć jawnie co jest wołene z tego namespac'a ;) // odszczekuje
+using namespace std::literals; 
 
 void background_work(size_t id, const std::string& text, std::chrono::milliseconds delay)
 {
@@ -60,6 +62,30 @@ void update_counter(int& counter)
             ++counter;
 }
 
+//////////////////////////////////////////////////////////////////////
+// cooperative model of thread interruption C++20
+void run(std::stop_token st)
+{
+    std::cout << "run is started in a thread id = " << std::this_thread::get_id() << std::endl;
+    
+    while (true)
+    {
+        std::this_thread::sleep_for(500ms);
+        std::cout << "run is working in a thread id = " << std::this_thread::get_id() << std::endl;
+        if (st.stop_requested())
+            break;
+    }
+
+    std::cout << "run is interrupted..." << std::endl;
+}
+
+std::thread create_thread()
+{
+    static int id = 1000;
+
+    return std::thread(background_work, ++id, "Thread", 100ms);
+}
+
 int main()
 {
     main_thread_id = std::this_thread::get_id();
@@ -72,7 +98,10 @@ int main()
     if (thd_empty.joinable())
         thd_empty.join();
 
-    std::thread thd_1 {&background_work, 1, std::cref(text), 500ms};
+    ext::joining_thread thd_1 {&background_work, 1, std::cref(text), 500ms};
+
+    ext::joining_thread thd_target = std::move(thd_1);
+
     int id = 2;
     std::thread thd_2 {[id] { background_work(id, "Multithreading", 250ms); }};
     BackgroundWork bw(3, "C++20");
@@ -89,14 +118,51 @@ int main()
 
     std::cout << "counter: " << counter << "\n";
 
-    if (thd_1.joinable())
-        thd_1.join();
-
     thd_2.join();
     std::cout << "thd_2 id = " << thd_2.get_id() << std::endl;
 
     thd_2 = std::thread {background_work, 4, "new thd", 100ms};
     thd_2.join();
 
+    //////////////////////////////////////////////////////////////////////
+    // cooperative model of thread interruption C++20
+
+    std::stop_source sc;
+    std::stop_token st = sc.get_token();
+
+    std::jthread thd_run_1{[&sc] { run(sc.get_token()); }};
+    std::jthread thd_run_2{[st] { run(st); }};
+    std::jthread thd_run_3{run}; // std::stop_source is used as member in std::jthread
+
+    std::this_thread::sleep_for(5s);
+    thd_run_3.request_stop();
+    sc.request_stop();
+
+    thd_run_1.join();
+
+    //////////////////////////////////////////////////////////////////////
+
+    const auto no_of_cores = std::thread::hardware_concurrency();
+    std::cout << "No of cores: " << no_of_cores << std::endl;
+    
+    std::vector<std::thread> thread_group(no_of_cores); // vector of not-a-threads
+
+    // spawn threads
+    for(auto& thd : thread_group)
+        thd = create_thread();
+
+    auto thd_6 = std::move(thread_group[0]);
+    thread_group.erase(thread_group.begin());
+
+    for(auto& thd : thread_group)
+    {
+        if (thd.joinable())
+            thd.join();
+    }
+
+    //thd_6 = create_thread(); // calls terminate
+
+    thd_6.join();
+    
     std::cout << "Main thread ends..." << std::endl;
 }
