@@ -6,7 +6,7 @@ class BankAccount
 {
     const int id_;
     double balance_;
-    mutable std::mutex mtx_;
+    mutable std::recursive_mutex mtx_;
 
 public:
     BankAccount(int id, double balance)
@@ -47,7 +47,7 @@ public:
 
     void deposit(double amount)
     {
-        std::lock_guard<std::mutex> lk {mtx_};
+        std::lock_guard<std::recursive_mutex> lk {mtx_};
         balance_ += amount;
     }
 
@@ -58,8 +58,28 @@ public:
 
     double balance() const
     {
-        std::lock_guard<std::mutex> lk {mtx_};
+        std::lock_guard<std::recursive_mutex> lk {mtx_};
         return balance_;
+    }
+
+    void lock()
+    {
+        mtx_.lock();
+    }
+
+    void unlock()
+    {
+        mtx_.unlock();
+    }
+
+    bool try_lock()
+    {
+        return mtx_.try_lock();
+    }
+
+    std::unique_lock<std::recursive_mutex> with_lock()
+    {
+        return std::unique_lock{mtx_};
     }
 };
 
@@ -96,6 +116,20 @@ int main()
     std::thread thd2(&make_deposits, std::ref(ba1), NO_OF_ITERS);
     std::thread thd3(&make_transfers, std::ref(ba1), std::ref(ba2), NO_OF_ITERS / 10);
     std::thread thd4(&make_transfers, std::ref(ba2), std::ref(ba1), NO_OF_ITERS / 10);
+
+    {
+        std::lock_guard<BankAccount> lk_trans{ba1};
+        ba1.deposit(1'000'000.0);
+        ba1.transfer(ba2, 5'000.0);
+        ba1.withdraw(900'000.0);
+    } // end of transaction
+
+    {
+        auto lk_trans = ba1.with_lock();
+        ba1.deposit(1'000'000.0);
+        ba1.transfer(ba2, 5'000.0);
+        ba1.withdraw(900'000.0);
+    } // end of transaction
 
     thd1.join();
     thd2.join();
