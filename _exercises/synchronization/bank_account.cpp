@@ -1,10 +1,12 @@
 #include <iostream>
+#include <mutex>
 #include <thread>
 
 class BankAccount
 {
     const int id_;
     double balance_;
+    mutable std::mutex mtx_;
 
 public:
     BankAccount(int id, double balance)
@@ -15,22 +17,35 @@ public:
 
     void print() const
     {
-        std::cout << "Bank Account #" << id_ << "; Balance = " << balance_ << std::endl;
+        // double current_balance {};
+        
+        // {
+        //     std::lock_guard<std::mutex> lk {mtx_};
+        //     current_balance = balance_;
+        // }
+        
+        std::cout << "Bank Account #" << id_ << "; Balance = " << balance() << std::endl;        
     }
 
     void transfer(BankAccount& to, double amount)
     {
-        balance_ -= amount;
-        to.balance_ += amount;
+        withdraw(amount);
+        to.deposit(amount);
+        //    std::lock_guard<std::mutex> lk{this->mtx};
+        //    balance_ -= amount;
+        //    std::lock_guard<std::mutex> lk2{to.mtx};
+        //    to.balance_ += amount;
     }
 
     void withdraw(double amount)
     {
+        std::lock_guard<std::mutex> lk {mtx_};
         balance_ -= amount;
     }
 
     void deposit(double amount)
     {
+        std::lock_guard<std::mutex> lk {mtx_};
         balance_ += amount;
     }
 
@@ -41,6 +56,7 @@ public:
 
     double balance() const
     {
+        std::lock_guard<std::mutex> lk {mtx_};
         return balance_;
     }
 };
