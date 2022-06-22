@@ -170,8 +170,6 @@ int main()
 
         auto run = [&hits](long count)
         {
-            long localHits = 0;
-
             std::mt19937_64 rand_engine {std::hash<std::thread::id> {}(std::this_thread::get_id())};
             std::uniform_real_distribution<double> rand_distr {0.0, 1.0};
 
@@ -180,10 +178,11 @@ int main()
                 double x = rand_distr(rand_engine);
                 double y = rand_distr(rand_engine);
                 if (x * x + y * y < 1)
-                    localHits++;
-            }
-
-            hits += localHits;
+                {
+                    hits++;
+                    //hits.fetch_add(1, std::memory_order_relaxed);
+                }
+            }            
         };
 
         std::vector<std::thread> threads(thread_count);

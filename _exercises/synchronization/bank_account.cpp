@@ -120,12 +120,13 @@ int main()
     {
         std::lock_guard<BankAccount> lk_trans{ba1};
         ba1.deposit(1'000'000.0);
-        ba1.transfer(ba2, 5'000.0);
+        for (int i = 0; i < NO_OF_ITERS / 10; ++i)
+            ba1.transfer(ba2, 5'000.0);
         ba1.withdraw(900'000.0);
     } // end of transaction
 
     {
-        auto lk_trans = ba1.with_lock();
+        auto lk_trans = ba1 .with_lock();
         ba1.deposit(1'000'000.0);
         ba1.transfer(ba2, 5'000.0);
         ba1.withdraw(900'000.0);
