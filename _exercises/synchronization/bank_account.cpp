@@ -28,18 +28,20 @@ public:
     }
 
     void transfer(BankAccount& to, double amount)
-    {
-        withdraw(amount);
-        to.deposit(amount);
-        //    std::lock_guard<std::mutex> lk{this->mtx};
-        //    balance_ -= amount;
-        //    std::lock_guard<std::mutex> lk2{to.mtx};
-        //    to.balance_ += amount;
+    {      
+        // std::unique_lock<std::mutex> lk_from{this->mtx_, std::defer_lock};
+        // std::unique_lock<std::mutex> lk_to{to.mtx_, std::defer_lock};
+
+        // std::lock(lk_from, lk_to);
+        std::scoped_lock lk{mtx_, to.mtx_}; // since C++17
+
+        balance_ -= amount;
+        to.balance_ += amount;           
     }
 
     void withdraw(double amount)
     {
-        std::lock_guard<std::mutex> lk {mtx_};
+        std::lock_guard lk {mtx_}; // since C++17
         balance_ -= amount;
     }
 
@@ -73,6 +75,12 @@ void make_deposits(BankAccount& ba, int no_of_operations)
         ba.deposit(1.0);
 }
 
+void make_transfers(BankAccount& from, BankAccount& to, int no_of_operations)
+{
+    for (int i = 0; i < no_of_operations; ++i)
+        from.transfer(to, 1.0);
+}
+
 int main()
 {
     const int NO_OF_ITERS = 10'000'000;
@@ -86,9 +94,13 @@ int main()
 
     std::thread thd1(&make_withdraws, std::ref(ba1), NO_OF_ITERS);
     std::thread thd2(&make_deposits, std::ref(ba1), NO_OF_ITERS);
+    std::thread thd3(&make_transfers, std::ref(ba1), std::ref(ba2), NO_OF_ITERS / 10);
+    std::thread thd4(&make_transfers, std::ref(ba2), std::ref(ba1), NO_OF_ITERS / 10);
 
     thd1.join();
     thd2.join();
+    thd3.join();
+    thd4.join();
 
     std::cout << "After all threads are done: ";
     ba1.print();
