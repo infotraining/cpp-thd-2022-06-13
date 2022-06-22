@@ -1,10 +1,19 @@
+/************
+ * mkdir build_wsl
+ * cd build_wsl
+ * cmake ..
+ * make
+ **************/
+
 #include <atomic>
 #include <chrono>
-#include <iostream>
-#include <random>
-#include <thread>
 #include <cstdlib>
 #include <ctime>
+#include <iostream>
+#include <mutex>
+#include <numeric>
+#include <random>
+#include <thread>
 
 using namespace std;
 
@@ -12,31 +21,193 @@ int main()
 {
     const long N = 100'000'000;
 
-    std::srand(static_cast<unsigned int>(std::time(nullptr)));
-    
-    //////////////////////////////////////////////////////////////////////////////
-    // single thread
-
-    cout << "Pi calculation started!" << endl;
-    const auto start = chrono::high_resolution_clock::now();
-        
-    long hits = 0;
-
-    for (long n = 0; n < N; ++n)
     {
-        double x = rand() / static_cast<double>(RAND_MAX);
-        double y = rand() / static_cast<double>(RAND_MAX);
-        if (x * x + y * y < 1)
-            hits++;
+        //////////////////////////////////////////////////////////////////////////////
+        // single thread
+
+        cout << "Pi calculation started! Single thread..." << endl;
+        const auto start = chrono::high_resolution_clock::now();
+
+        long hits = 0;
+
+        std::mt19937_64 rand_engine {std::hash<std::thread::id> {}(std::this_thread::get_id())};
+        std::uniform_real_distribution<double> rand_distr {0.0, 1.0};
+
+        for (long n = 0; n < N; ++n)
+        {
+            double x = rand_distr(rand_engine);
+            double y = rand_distr(rand_engine);
+            if (x * x + y * y < 1)
+                hits++;
+        }
+
+        const double pi = static_cast<double>(hits) / N * 4;
+
+        const auto end = chrono::high_resolution_clock::now();
+        const auto elapsed_time = chrono::duration_cast<chrono::milliseconds>(end - start).count();
+
+        cout << "Pi = " << pi << endl;
+        cout << "Elapsed = " << elapsed_time << "ms" << endl;
     }
 
-    const double pi = static_cast<double>(hits) / N * 4;
+    //////////////////////////////////////////////////////////////////////////////
 
-    const auto end = chrono::high_resolution_clock::now();
-    const auto elapsed_time = chrono::duration_cast<chrono::milliseconds>(end - start).count();
-
-    cout << "Pi = " << pi << endl;
-    cout << "Elapsed = " << elapsed_time << "ms" << endl;
+    std::cout << "###################################################################################" << std::endl;
 
     //////////////////////////////////////////////////////////////////////////////
+    // multithreading
+    {
+        cout << "Pi calculation started! Multithreading..." << endl;
+        const auto start = chrono::high_resolution_clock::now();
+
+        const size_t thread_count = std::max(1u, std::thread::hardware_concurrency());
+
+        const auto N_per_thread = N / thread_count;
+
+        std::vector<std::thread> threads(thread_count);
+        std::vector<long> partial_hits(thread_count);
+
+        auto run = [](long count, long& hits)
+        {
+            std::mt19937_64 rand_engine {std::hash<std::thread::id> {}(std::this_thread::get_id())};
+            std::uniform_real_distribution<double> rand_distr {0.0, 1.0};
+
+            for (long n = 0; n < count; ++n)
+            {
+                double x = rand_distr(rand_engine);
+                double y = rand_distr(rand_engine);
+                if (x * x + y * y < 1)
+                    hits++;
+            }
+        };
+
+        for (int i = 0; i < threads.size(); ++i)
+        {
+            threads[i] = std::thread(run, N_per_thread, std::ref(partial_hits[i]));
+        }
+
+        for (auto& thd : threads)
+            thd.join();
+
+        const long hits = std::accumulate(partial_hits.begin(), partial_hits.end(), 0L);
+
+        const double pi = static_cast<double>(hits) / N * 4;
+
+        const auto end = chrono::high_resolution_clock::now();
+        const auto elapsed_time = chrono::duration_cast<chrono::milliseconds>(end - start).count();
+
+        cout << "Pi = " << pi << endl;
+        cout << "Elapsed = " << elapsed_time << "ms" << endl;
+    }
+    //////////////////////////////////////////////////////////////////////////////
+
+    std::cout << "###################################################################################" << std::endl;
+
+    //////////////////////////////////////////////////////////////////////////////
+    // multithreading
+    {
+        cout << "Pi calculation started! Multithreading with local hits counter..." << endl;
+        const auto start = chrono::high_resolution_clock::now();
+
+        const size_t thread_count = std::max(1u, std::thread::hardware_concurrency());
+
+        const auto N_per_thread = N / thread_count;
+
+        std::vector<std::thread> threads(thread_count);
+        std::vector<long> partial_hits(thread_count);
+
+        auto run = [](long count, long& hits)
+        {
+            long localHits = 0;
+
+            std::mt19937_64 rand_engine {std::hash<std::thread::id> {}(std::this_thread::get_id())};
+            std::uniform_real_distribution<double> rand_distr {0.0, 1.0};
+
+            for (long n = 0; n < count; ++n)
+            {
+                double x = rand_distr(rand_engine);
+                double y = rand_distr(rand_engine);
+                if (x * x + y * y < 1)
+                    localHits++;
+            }
+
+            hits += localHits;
+        };
+
+        for (int i = 0; i < threads.size(); ++i)
+        {
+            threads[i] = std::thread(run, N_per_thread, std::ref(partial_hits[i]));
+        }
+
+        for (auto& thd : threads)
+            thd.join();
+
+        const long hits = std::accumulate(partial_hits.begin(), partial_hits.end(), 0L);
+
+        const double pi = static_cast<double>(hits) / N * 4;
+
+        const auto end = chrono::high_resolution_clock::now();
+        const auto elapsed_time = chrono::duration_cast<chrono::milliseconds>(end - start).count();
+
+        cout << "Pi = " << pi << endl;
+        cout << "Elapsed = " << elapsed_time << "ms" << endl;
+    }
+    //////////////////////////////////////////////////////////////////////////////
+
+    std::cout << "###################################################################################" << std::endl;
+
+    //////////////////////////////////////////////////////////////////////////////
+    // multithreading with atomic
+    {
+        cout << "Pi calculation started! Multithreading with atomic hits..." << endl;
+        const auto start = chrono::high_resolution_clock::now();
+
+        const size_t thread_count = std::max(1u, std::thread::hardware_concurrency());
+
+        const auto N_per_thread = N / thread_count;
+
+        std::atomic<long> hits {};
+
+        auto run = [&hits](long count)
+        {
+            long localHits = 0;
+
+            std::mt19937_64 rand_engine {std::hash<std::thread::id> {}(std::this_thread::get_id())};
+            std::uniform_real_distribution<double> rand_distr {0.0, 1.0};
+
+            for (long n = 0; n < count; ++n)
+            {
+                double x = rand_distr(rand_engine);
+                double y = rand_distr(rand_engine);
+                if (x * x + y * y < 1)
+                    localHits++;
+            }
+
+            hits += localHits;
+        };
+
+        std::vector<std::thread> threads(thread_count);
+
+        for (auto& thd : threads)
+        {
+            thd = std::thread(run, N_per_thread);
+        }
+
+        for (auto& thd : threads)
+            thd.join();
+
+        const double pi = static_cast<double>(hits) / N * 4;
+
+        const auto end = chrono::high_resolution_clock::now();
+        const auto elapsed_time = chrono::duration_cast<chrono::milliseconds>(end - start).count();
+
+        cout << "Pi = " << pi << endl;
+        cout << "Elapsed = " << elapsed_time << "ms" << endl;
+    }
+    //////////////////////////////////////////////////////////////////////////////
+
+    struct AlignedForCacheLine
+    {
+        alignas(64) long value;
+    };
 }
