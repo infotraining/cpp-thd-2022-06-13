@@ -29,7 +29,7 @@ namespace ver_1_0
         ThreadPool& operator=(const ThreadPool&) = delete;
 
         ~ThreadPool()
-        {            
+        {
             for (size_t i = 0; i < threads_.size(); ++i)
                 tasks_.push(STOP);
 
@@ -83,9 +83,10 @@ namespace ver_2_0
         ThreadPool& operator=(const ThreadPool&) = delete;
 
         ~ThreadPool()
-        {            
+        {
             for (size_t i = 0; i < threads_.size(); ++i)
-                tasks_.push([this] { stop_ = true; });
+                tasks_.push([this]
+                    { stop_ = true; });
 
             for (auto& thread : threads_)
                 thread.join();
@@ -99,15 +100,15 @@ namespace ver_2_0
     private:
         std::vector<std::thread> threads_;
         ThreadSafeQueue<Task> tasks_;
-        std::atomic<bool> stop_{false};
+        std::atomic<bool> stop_ {false};
 
         void run()
         {
             while (!stop_)
             {
                 Task task;
-                tasks_.pop(task);                
-                task();                
+                tasks_.pop(task);
+                task();
             }
         }
     };
