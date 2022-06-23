@@ -39,6 +39,43 @@ void consume(std::shared_future<int> fsquare)
     std::cout << "Consuming in THD#" << std::this_thread::get_id() << " - " << fsquare.get() << std::endl;
 }
 
+template <typename F>
+auto spawn_task(F&& f)
+{
+    using ResultT = decltype(f());
+    std::packaged_task<ResultT()> pt(std::forward<F>(f));
+
+    std::future<ResultT> fresult = pt.get_future();
+
+    std::thread thd{std::move(pt)};
+    thd.detach();
+
+    return fresult;
+}
+
+class Calculator
+{
+    std::promise<int> promise_;
+public:
+    std::future<int> get_future()
+    {
+        return promise_.get_future();
+    }
+
+    void calculate(int n)
+    {
+        try
+        {
+            int result = calculate_square(n);
+            promise_.set_value(result);
+        }
+        catch(...)
+        {
+            promise_.set_exception(std::current_exception());
+        }        
+    }
+};
+
 int main()
 {
     std::future<int> f1 = std::async(std::launch::async, &calculate_square, 13);
@@ -78,4 +115,45 @@ int main()
     {
         thd.join();
     }
+
+    std::future<int> f_deffered = std::async(std::launch::deferred, calculate_square, 13);
+
+    assert(f_deffered.wait_for(0ns) == std::future_status::deferred);
+
+    auto result = f_deffered.get();
+
+    std::cout << "\n#############################################" << std::endl;
+
+    // auto fs1 = std::async(std::launch::async, save_to_file, "data1.txt");
+    // auto fs2 = std::async(std::launch::async, save_to_file, "data2.txt");
+    // auto fs3 = std::async(std::launch::async, save_to_file, "data3.txt");
+    // auto fs4 = std::async(std::launch::async, save_to_file, "data4.txt");
+
+    spawn_task([] { save_to_file("data1.txt"); });
+    spawn_task([] { save_to_file("data2.txt"); });
+    spawn_task([] { save_to_file("data3.txt"); });
+    auto ft = spawn_task([] { save_to_file("data4.txt"); });
+
+    ft.wait();
+
+    std::cout << "\n#############################################" << std::endl;
+    
+    // PACKAGED TASK
+
+    std::packaged_task<int()> pt([] { return calculate_square(13); });
+    std::future<int> f_result = pt.get_future();
+
+    std::thread thd_runner{std::move(pt)};
+
+    std::cout << "Result: " << f_result.get() << std::endl;
+
+    thd_runner.join();
+
+    Calculator calc;
+
+    f_result = calc.get_future();
+
+    spawn_task([&] { calc.calculate(101); });
+
+    std::cout << "Calculator returns: " << f_result.get() << std::endl;
 }

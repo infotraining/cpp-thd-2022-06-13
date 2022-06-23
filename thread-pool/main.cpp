@@ -7,10 +7,13 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <future>
+#include <random>
 
 using namespace std::literals;
 
 using Task = std::function<void()>;
+//using Task = Folly::function<void()>;
 
 namespace ver_1_0
 {
@@ -92,9 +95,15 @@ namespace ver_2_0
                 thread.join();
         }
 
-        void submit(Task task)
+
+        template <typename F>
+        auto submit(F&& f) -> std::future<decltype(f())>
         {
-            tasks_.push(task);
+            using ResultT = decltype(f());
+            auto pt = std::make_shared<std::packaged_task<ResultT()>>(std::forward<F>(f));
+            std::future<ResultT> f_result = pt->get_future();
+            tasks_.push([pt] { (*pt)(); });
+            return f_result;
         }
 
     private:
@@ -128,6 +137,21 @@ void background_work(size_t id, const std::string& text, std::chrono::millisecon
     std::cout << "bw#" << id << " is finished..." << std::endl;
 }
 
+int calculate_square(int x)
+{
+    std::cout << "Starting calculation for " << x << " in " << std::this_thread::get_id() << std::endl;
+
+    std::random_device rd;
+    std::uniform_int_distribution<> distr(100, 5000);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(distr(rd)));
+
+    if (x % 3 == 0)
+        throw std::runtime_error("Error#3");
+
+    return x * x;
+}
+
 int main()
 {
     std::cout << "Main thread starts..." << std::endl;
@@ -139,6 +163,27 @@ int main()
     {
         thd_pool.submit([=]
             { background_work(i, text, 250ms); });
+    }
+
+    std::vector<std::pair<int, std::future<int>>> f_squares;
+
+    for(int i = 1; i < 100; ++i)
+    {
+        f_squares.emplace_back(i, thd_pool.submit([i] { return calculate_square(i); }));
+    }
+
+    for(auto& fs : f_squares)
+    {
+        std::cout << fs.first << " - ";
+        try
+        {
+            int result = fs.second.get();
+            std::cout << result << "\n";
+        }
+        catch(const std::exception& e)
+        {
+            std::cout << e.what() << '\n';
+        }        
     }
 
     std::cout << "Main thread ends..." << std::endl;
