@@ -23,7 +23,7 @@ add_subdirectory(src)
 #----------------------------------------
 add_executable(${PROJECT_NAME} main.cpp)
 target_link_libraries(${PROJECT_NAME} Threads::Threads thread_safe_queue_lib)
-target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_14)
+target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
 
 
 #----------------------------------------
